@@ -2,3 +2,4 @@ p.py
 t.py
 t.txt
 __pycache__
+.gitignore
