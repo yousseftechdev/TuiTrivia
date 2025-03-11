@@ -3,9 +3,8 @@
 import requests
 import json
 import os
-import threading
-import time
 import random
+from getpass import getpass
 from player import Player
 from termcolor import colored
 from hashlib import sha256
@@ -17,7 +16,8 @@ SCORES_FILE = "scores.json"
 USERS_FILE = "users.json"
 CUSTOM_QUESTIONS_FILE = "custom_questions.json"
 TIME_LIMIT = 30  # Time limit for answering questions in seconds
-DEV_MODE = False  # Set to True to enable debug commands
+DEV_MODE = False  # Set to True to enable debug commands by default
+
 # Add difficulty and category constants
 DIFFICULTY = "easy"
 DIFFICULTY_LEVELS = ["easy", "medium", "hard"]
@@ -50,15 +50,11 @@ CATEGORIES = {
     "Cartoon & Animations": 32,
 }
 
+API_URL = "http://127.0.0.1:5000"
 
 # Function to get a random trivia question
-def get_random_question(difficulty=None, category=None):
-    url = TRIVIA_API_URL
-    if difficulty:
-        url += f"&difficulty={difficulty}"
-    if category:
-        url += f"&category={category}"
-    response = requests.get(url)
+def get_random_question():
+    response = requests.get(TRIVIA_API_URL)
     if response.status_code == 200:
         data = response.json()
         question = data["results"][0]
@@ -84,7 +80,7 @@ def save_scores(scores):
 
 
 # Function to update user score
-def update_score(username, score):
+def update_score(username, score, use_api=True):
     scores = load_scores()
     date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if username in scores:
@@ -93,6 +89,22 @@ def update_score(username, score):
     else:
         scores[username] = {"score": score, "date": date}
     save_scores(scores)
+    
+    if use_api:
+        # Send score data to the API
+        data = {
+            'username': username,
+            'score': scores[username]["score"],
+            'date': date
+        }
+        try:
+            response = requests.post(f"{API_URL}/add_score", json=data)
+            if response.status_code == 201:
+                print(colored("Score added to leaderboard", "green"))
+            else:
+                print(colored("Failed to add score to leaderboard", "red"))
+        except requests.exceptions.RequestException:
+            print(colored("Failed to connect to the leaderboard API", "red"))
 
 
 # Function to clear score for a user
@@ -116,10 +128,26 @@ def clear_all_scores():
 
 
 # Function to get high scores
-def get_high_scores():
-    scores = load_scores()
-    sorted_scores = sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)
-    return sorted_scores
+def get_high_scores(use_api=True):
+    global DEV_MODE
+    if use_api:
+        try:
+            response = requests.get(f"{API_URL}/leaderboard")
+            if DEV_MODE:
+                print(f"Status Code: {response.status_code}")  # Debugging information
+                print(f"Response Text: {response.text}")  # Debugging information
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(colored("Failed to fetch leaderboard", "red"))
+                return []
+        except requests.exceptions.RequestException:
+            print(colored("Failed to connect to the leaderboard API", "red"))
+            return []
+    else:
+        scores = load_scores()
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)
+        return [{'username': user, 'score': data['score'], 'date': data['date']} for user, data in sorted_scores]
 
 
 # Function to load users from a file
@@ -147,7 +175,7 @@ def authenticate_user():
     users = load_users()
     username = input("Enter your username: ")
     if username in users:
-        password = input("Enter your password: ")
+        password = getpass("Enter your password: ")
         if users[username] == hash_password(password):
             print(colored("Login successful", "green"))
             return username
@@ -170,7 +198,7 @@ def register_user():
             )
         )
         return None
-    password = input("Enter a new password: ")
+    password = getpass("Enter a new password: ")
     users[username] = hash_password(password)
     save_users(users)
     print(colored("Registration successful", "green"))
@@ -221,28 +249,45 @@ def get_random_custom_question():
         print(colored("No custom questions available", "red"))
         return None
 
-
-# Function to timeout the player
-def time_up():
-    print(colored("\nTime's up!", "yellow"))
-    raise TimeoutError
-
-
-# Function to handle timed questions
-def timed_input(prompt, timeout):
-    timer = threading.Timer(timeout, time_up)
-    timer.start()
+# Function to clear the leaderboard database
+def clear_leaderboard_db():
+    API_KEY = hash_password(getpass("Enter API Key to proceed: "))
+    headers = {'API-Key': API_KEY}
     try:
-        answer = input(prompt)
-    except TimeoutError:
-        answer = None
-    timer.cancel()
-    return answer
+        response = requests.delete(f"{API_URL}/clear_leaderboard", headers=headers)
+        if response.status_code == 200:
+            print(colored("Leaderboard database cleared successfully", "green"))
+        elif response.status_code == 403:
+            print(colored("Unauthorized. Please enter a valid API Key", "red"))
+        else:
+            print(colored("Failed to clear leaderboard database", "red"))
+    except requests.exceptions.RequestException:
+        print(colored("Failed to connect to the leaderboard API", "red"))
 
+# Function to edit a user entry in the leaderboard database
+def edit_user_db(old_username, new_username, new_score, new_date):
+    API_KEY = hash_password(getpass("Enter API Key to proceed: "))
+    headers = {'API-Key': API_KEY}
+    data = {
+        'old_username': old_username,
+        'new_username': new_username,
+        'new_score': new_score,
+        'new_date': new_date
+    }
+    try:
+        response = requests.put(f"{API_URL}/edit_user", json=data, headers=headers)
+        if response.status_code == 200:
+            print(colored("User entry updated successfully", "green"))
+        elif response.status_code == 403:
+            print(colored("Unauthorized. Please enter a valid API Key", "red"))
+        else:
+            print(colored("Failed to update user entry", "red"))
+    except requests.exceptions.RequestException:
+        print(colored("Failed to connect to the leaderboard API", "red"))
 
 # Main function to run the trivia game
 def main():
-    global DEV_MODE, DIFFICULTY, CATEGORY
+    global DEV_MODE, DIFFICULTY, CATEGORY, API_URL
 
     print(colored("Welcome to TuiTrivia!", "cyan"))
     while True:
@@ -262,15 +307,18 @@ def main():
         cmd = input(f"{username}> ")
         match cmd.split():
             case ["exit"]:
+                print(colored("Exiting...", "yellow"))
                 break
             case ["help"]:
                 print("Commands:")
                 print("exit: Exit the game")
                 print("help: Show this help message")
                 print("clear: Clear the screen")
-                print("scores: Show high scores")
+                print("scores <local|global>: Show high scores")
                 print("clearscore <username>: Clear your score")
                 print("clearall: Clear all scores")
+                print("cleardb: Clear the leaderboard database")
+                print("editdb <old_username> <new_username> <new_score> <new_date>: Edit a user entry in the leaderboard database")
                 print("trivia: Get a random trivia question")
                 print("custom: Get a random custom trivia question")
                 print("addcustom: Add a custom trivia question")
@@ -279,12 +327,10 @@ def main():
                 print("debug: Show debug information")
                 print("debug color <color>: Test colored output")
                 print("debug colors: Show available colors")
-                print(
-                    "debug timeout: Test timeout feature (this is for me cause the timeout function kept glitching)"
-                )
                 print("devmode: Enable/Disable developer mode")
                 print("difficulty <level>: Set difficulty level (easy, medium, hard)")
                 print("category <name>: Set question category")
+                print("debug api <url>: Set API URL")
             case ["about"]:
                 print(
                     colored(
@@ -292,7 +338,7 @@ def main():
                     )
                 )
                 print(
-                    "Note: When answering trivia questions, type the actual answer and not the number, and the time limit for answering is 30 seconds."
+                    "Note: When answering trivia questions, type the actual answer and not the number."
                 )
             case ["devmode"]:
                 if DEV_MODE:
@@ -301,26 +347,35 @@ def main():
                 else:
                     DEV_MODE = True
                     print(colored("Developer mode enabled", "yellow"))
-            case ["edit", username, score]:
-                try:
-                    score = int(score)
-                    update_score(username, score)
-                except ValueError:
-                    print(colored("Invalid score. Score must be an integer", "red"))
             case ["clear"]:
                 print("\033c", end="")
             case ["scores"]:
+                print(colored("Usage scores <local|global>", "red"))
+            case ["scores", "local"]:
                 print("Scores:")
-                for user, data in get_high_scores():
-                    print(f"{user}: {data['score']} (Last updated: {data['date']})")
+                scores = load_scores()
+                for user, data in scores.items():
+                    print(f"{user}: {data['score']} ({data['date']})")
+            case ["scores", "global"]:
+                print("High Scores:")
+                for data in get_high_scores():
+                    print(f"{data['username']}: {data['score']} ({data['date']})")
             case ["clearscore", username]:
                 clear_score(username)
             case ["clearall"]:
                 clear_all_scores()
+            case ["cleardb"]:
+                clear_leaderboard_db()
+            case ["editdb", old_username, new_username, new_score, new_date]:
+                try:
+                    new_score = int(new_score)
+                    edit_user_db(old_username, new_username, new_score, new_date)
+                except ValueError:
+                    print(colored("Invalid score. Score must be an integer", "red"))
             case ["trivia"]:
                 incorrect = False
                 while not incorrect:
-                    question = get_random_question(DIFFICULTY, CATEGORY)
+                    question = get_random_question()
                     if question:
                         print(f"Question: {question['question']}")
                         for i, option in enumerate(
@@ -329,7 +384,7 @@ def main():
                             1,
                         ):
                             print(f"{i}. {option}")
-                        answer = timed_input("Your answer: ", TIME_LIMIT)
+                        answer = input("Your answer: ")
                         if answer == question["correct_answer"]:
                             print(colored("Correct!", "green"))
                             update_score(username, 10)
@@ -338,8 +393,8 @@ def main():
                             print(f"Correct answer: {question['correct_answer']}")
                             incorrect = True
                     print("High Scores:")
-                    for user, data in get_high_scores():
-                        print(f"{user}: {data['score']}")
+                    for data in get_high_scores():
+                        print(f"{data['username']}: {data['score']}")
             case ["difficulty"]:
                 print("Current difficulty level:", DIFFICULTY)
                 print("Available difficulty levels:", ", ".join(DIFFICULTY_LEVELS))
@@ -372,7 +427,7 @@ def main():
                             1,
                         ):
                             print(f"{i}. {option}")
-                        answer = timed_input("Your answer: ", TIME_LIMIT)
+                        answer = input("Your answer: ")
                         if answer == question["correct_answer"]:
                             print(colored("Correct!", "green"))
                             update_score(username, 10)
@@ -381,8 +436,8 @@ def main():
                             print(f"Correct answer: {question['correct_answer']}")
                             incorrect = True
                     print("High Scores:")
-                    for user, data in get_high_scores():
-                        print(f"{user}: {data['score']}")
+                    for data in get_high_scores():
+                        print(f"{data['username']}: {data['score']}")
             case ["addcustom"]:
                 add_custom_question()
             case ["multiplayer"]:
@@ -402,29 +457,20 @@ def main():
                         ):
                             print(f"{i}. {option}")
                         for player in players:
-                            try:
-                                player.getAnswer()
-                                if player.answer == question["correct_answer"]:
-                                    print(
-                                        colored(
-                                            f"{player.username} answered correctly!",
-                                            "green",
-                                        )
-                                    )
-                                    scores[player.username] += 10
-                                else:
-                                    print(
-                                        colored(
-                                            f"{player.username} answered incorrectly!",
-                                            "red",
-                                        )
-                                    )
-                                    incorrect = True
-                            except TimeoutError:
+                            player.getAnswer()
+                            if player.answer == question["correct_answer"]:
                                 print(
                                     colored(
-                                        f"{player.username} did not answer in time!",
-                                        "yellow",
+                                        f"{player.username} answered correctly!",
+                                        "green",
+                                    )
+                                )
+                                scores[player.username] += 10
+                            else:
+                                print(
+                                    colored(
+                                        f"{player.username} answered incorrectly!",
+                                        "red",
                                     )
                                 )
                                 incorrect = True
@@ -496,17 +542,26 @@ def main():
                             "Invalid command. Type 'help' for a list of commands", "red"
                         )
                     )
-            case ["debug", "timeout"]:
+            case ["debug", "edit", username, score]:
                 if DEV_MODE:
                     try:
-                        time_up()
-                    except TimeoutError:
-                        print(
-                            colored(
-                                "If you can see this message and not an error, then the timeout feature is working correctly.",
-                                "green",
-                            )
+                        score = int(score)
+                        update_score(username, score)
+                    except ValueError:
+                        print(colored("Invalid score. Score must be an integer", "red"))
+                else:
+                    print(
+                        colored(
+                            "Invalid command. Type 'help' for a list of commands", "red"
                         )
+                    )
+            case ["debug", "api", url]:
+                if DEV_MODE:
+                    if type(url) == str:
+                        API_URL = url
+                        print(colored(f"Set URL to: {url}", "green"))
+                    else:
+                        print(colored("Invalid URL", "red"))
                 else:
                     print(
                         colored(
