@@ -1,10 +1,11 @@
 # TuiTrivia: A trivia game for the terminal
 
+# Imports
 import requests
 import json
 import os
 import random
-from getpass import getpass
+from pwinput import pwinput
 from player import Player
 from termcolor import colored
 from hashlib import sha256
@@ -15,7 +16,6 @@ TRIVIA_API_URL = "https://opentdb.com/api.php?amount=1&type=multiple"
 SCORES_FILE = "scores.json"
 USERS_FILE = "users.json"
 CUSTOM_QUESTIONS_FILE = "custom_questions.json"
-TIME_LIMIT = 30  # Time limit for answering questions in seconds
 DEV_MODE = False  # Set to True to enable debug commands by default
 
 # Add difficulty and category constants
@@ -50,7 +50,7 @@ CATEGORIES = {
     "Cartoon & Animations": 32,
 }
 
-API_URL = "http://yousseftech.pythonanywhere.com"
+API_URL = "https://uiriviaeapelleployment-yousseftechdev4943-he442368.leapcell.dev"
 
 # Function to get a random trivia question
 def get_random_question():
@@ -175,7 +175,7 @@ def authenticate_user():
     users = load_users()
     username = input("Enter your username: ")
     if username in users:
-        password = getpass("Enter your password: ")
+        password = pwinput("Enter your password: ")
         if users[username] == hash_password(password):
             print(colored("Login successful", "green"))
             return username
@@ -198,7 +198,7 @@ def register_user():
             )
         )
         return None
-    password = getpass("Enter a new password: ")
+    password = pwinput("Enter a new password: ")
     users[username] = hash_password(password)
     save_users(users)
     print(colored("Registration successful", "green"))
@@ -251,7 +251,7 @@ def get_random_custom_question():
 
 # Function to clear the leaderboard database
 def clear_leaderboard_db():
-    API_KEY = hash_password(getpass("Enter API Key to proceed: "))
+    API_KEY = hash_password(pwinput("Enter API Key to proceed: "))
     headers = {'API-Key': API_KEY}
     try:
         response = requests.delete(f"{API_URL}/clear_leaderboard", headers=headers)
@@ -266,7 +266,7 @@ def clear_leaderboard_db():
 
 # Function to edit a user entry in the leaderboard database
 def edit_user_db(old_username, new_username, new_score, new_date):
-    API_KEY = hash_password(getpass("Enter API Key to proceed: "))
+    API_KEY = hash_password(pwinput("Enter API Key to proceed: "))
     headers = {'API-Key': API_KEY}
     data = {
         'old_username': old_username,
