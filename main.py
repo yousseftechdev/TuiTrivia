@@ -50,7 +50,7 @@ CATEGORIES = {
     "Cartoon & Animations": 32,
 }
 
-API_URL = "http://127.0.0.1:5000"
+API_URL = "http://yousseftech.pythonanywhere.com"
 
 # Function to get a random trivia question
 def get_random_question():
