@@ -21,7 +21,7 @@ TuiTrivia is a trivia game for the terminal, allowing users to play trivia games
 
 1. Clone the repository:
     ```sh
-    git clone <repository_url>
+    git clone https://github.com/yousseftechdev/TuiTrivia
     cd TuiTrivia
     ```
 
