@@ -62,7 +62,7 @@ TuiTrivia is a trivia game for the terminal, allowing users to play trivia games
 ### API and Database
 
 - Flask: Used for the API
-- SQLite3: Used for storing leaderboard
+- Supabase: Used for storing leaderboard in a postgresql database
 - Leapcell: Hosting the API and Database
 
 ## License
@@ -73,3 +73,5 @@ This project is licensed under the MIT License.
 
 - Open Trivia Database (https://opentdb.com/)
 - Flask (https://flask.palletsprojects.com/)
+- Supabase (https://supabase.com/)
+- Leapcell (https://leapcell.io/)
